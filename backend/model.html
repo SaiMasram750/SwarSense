@@ -1,59 +1,115 @@
-<div>Teachable Machine Image Model</div>
-<button type="button" onclick="init()">Start</button>
-<div id="webcam-container"></div>
-<div id="label-container"></div>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-<script type="text/javascript">
-    // More API functions here:
-    // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/image
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SwarSense – Webcam Emotion Detector</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 24px; }
+      .container { max-width: 820px; margin: 0 auto; }
+      .row { display: flex; gap: 16px; align-items: flex-start; }
+      .panel { flex: 1; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
+      .muted { color: #6b7280; font-size: 14px; }
+      #label-container div { padding: 4px 0; }
+      button { background: #2563eb; color: white; border: 0; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
+      button:disabled { background: #9ca3af; cursor: not-allowed; }
+      progress { width: 100%; height: 8px; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Webcam Emotion Detector</h2>
+      <p class="muted">Runs entirely in your browser using your Teachable Machine model.</p>
+      <div class="row">
+        <div class="panel">
+          <div id="webcam-container"></div>
+          <div style="margin-top: 12px">
+            <button id="start" onclick="init()">Start</button>
+            <button id="stop" onclick="stop()" disabled>Stop</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div id="label-container"></div>
+        </div>
+      </div>
+      <p class="muted">
+        Tip: If the video is mirrored, that's intentional to make it easier to align your movements.
+      </p>
+    </div>
 
-    // the link to your model provided by Teachable Machine export panel
-    const URL = "../model/";  // Update this to point to your model directory relative to the HTML file
+    <script type="text/javascript">
+      // Update this to point to your Teachable Machine model folder
+      // You can host your exported model files in `backend/model/`
+      const URL = "../model/";
 
-    let model, webcam, labelContainer, maxPredictions;
+      let model, webcam, labelContainer, maxPredictions, rafId;
 
-    // Load the image model and setup the webcam
-    async function init() {
+      async function init() {
+        toggleButtons(true);
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
+        try {
+          model = await tmImage.load(modelURL, metadataURL);
+          maxPredictions = model.getTotalClasses();
 
-        // load the model and metadata
-        // Refer to tmImage.loadFromFiles() in the API to support files from a file picker
-        // or files from your local hard drive
-        // Note: the pose library adds "tmImage" object to your window (window.tmImage)
-        model = await tmImage.load(modelURL, metadataURL);
-        maxPredictions = model.getTotalClasses();
+          const flip = true;
+          webcam = new tmImage.Webcam(320, 240, flip);
+          await webcam.setup();
+          await webcam.play();
+          rafId = window.requestAnimationFrame(loop);
 
-        // Convenience function to setup a webcam
-        const flip = true; // whether to flip the webcam
-        webcam = new tmImage.Webcam(200, 200, flip); // width, height, flip
-        await webcam.setup(); // request access to the webcam
-        await webcam.play();
-        window.requestAnimationFrame(loop);
-
-        // append elements to the DOM
-        document.getElementById("webcam-container").appendChild(webcam.canvas);
-        labelContainer = document.getElementById("label-container");
-        for (let i = 0; i < maxPredictions; i++) { // and class labels
-            labelContainer.appendChild(document.createElement("div"));
+          document.getElementById("webcam-container").appendChild(webcam.canvas);
+          labelContainer = document.getElementById("label-container");
+          labelContainer.innerHTML = "";
+          for (let i = 0; i < maxPredictions; i++) {
+            const row = document.createElement("div");
+            const name = document.createElement("div");
+            name.style.fontWeight = 600;
+            const bar = document.createElement("progress");
+            bar.max = 1; bar.value = 0;
+            row.appendChild(name);
+            row.appendChild(bar);
+            labelContainer.appendChild(row);
+          }
+        } catch (err) {
+          alert("Failed to initialize model/webcam: " + err);
+          toggleButtons(false);
         }
-    }
+      }
 
-    async function loop() {
-        webcam.update(); // update the webcam frame
+      function toggleButtons(running) {
+        document.getElementById("start").disabled = running;
+        document.getElementById("stop").disabled = !running;
+      }
+
+      async function loop() {
+        webcam.update();
         await predict();
-        window.requestAnimationFrame(loop);
-    }
+        rafId = window.requestAnimationFrame(loop);
+      }
 
-    // run the webcam image through the image model
-    async function predict() {
-        // predict can take in an image, video or canvas html element
+      async function predict() {
         const prediction = await model.predict(webcam.canvas);
         for (let i = 0; i < maxPredictions; i++) {
-            const classPrediction =
-                prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-            labelContainer.childNodes[i].innerHTML = classPrediction;
+          const row = labelContainer.childNodes[i];
+          const name = prediction[i].className;
+          const prob = prediction[i].probability;
+          row.childNodes[0].textContent = `${name}: ${(prob * 100).toFixed(1)}%`;
+          row.childNodes[1].value = prob;
         }
-    }
-</script>
+      }
+
+      async function stop() {
+        try {
+          toggleButtons(false);
+          if (rafId) cancelAnimationFrame(rafId);
+          if (webcam) await webcam.stop();
+        } catch (err) {
+          console.warn("Failed to stop webcam:", err);
+        }
+      }
+    </script>
+  </body>
+  </html>
