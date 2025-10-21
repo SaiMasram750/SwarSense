@@ -1,0 +1,6 @@
+streamlit>=1.37.0
+speechrecognition>=3.10.0
+pydub>=0.25.1
+pronouncing>=0.2.0
+gTTS>=2.5.1
+# playsound is not used anymore; Streamlit plays audio directly from bytes

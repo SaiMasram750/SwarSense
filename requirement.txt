@@ -1,6 +1,0 @@
-streamlit
-speechrecognition
-pydub
-pronouncing
-gtts
-playsound
