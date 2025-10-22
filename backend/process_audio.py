@@ -7,11 +7,18 @@ import speech_recognition as sr
 import tempfile
 import os
 import wave
-import pyaudio
 import numpy as np
 import streamlit as st
 from typing import Optional, Tuple
 import io
+
+# Try to import pyaudio, but make it optional
+try:
+    import pyaudio
+    PYAUDIO_AVAILABLE = True
+except ImportError:
+    PYAUDIO_AVAILABLE = False
+    st.warning("⚠️ PyAudio not available. Live recording will be disabled.")
 
 
 class AudioProcessor:
@@ -20,11 +27,19 @@ class AudioProcessor:
     def __init__(self):
         """Initialize the audio processor with speech recognition engine."""
         self.recognizer = sr.Recognizer()
-        self.microphone = sr.Microphone()
         
-        # Adjust for ambient noise
-        with self.microphone as source:
-            self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+        # Only initialize microphone if PyAudio is available
+        if PYAUDIO_AVAILABLE:
+            try:
+                self.microphone = sr.Microphone()
+                # Adjust for ambient noise
+                with self.microphone as source:
+                    self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            except Exception as e:
+                st.warning(f"⚠️ Microphone initialization failed: {e}")
+                self.microphone = None
+        else:
+            self.microphone = None
     
     def transcribe_audio_file(self, audio_file) -> Optional[str]:
         """
@@ -71,6 +86,10 @@ class AudioProcessor:
         Returns:
             Audio data as bytes or None if recording fails
         """
+        if not PYAUDIO_AVAILABLE or self.microphone is None:
+            st.error("❌ Live recording not available. Please upload an audio file instead.")
+            return None
+            
         try:
             with self.microphone as source:
                 st.info(f"🎤 Recording for {duration} seconds... Speak now!")
